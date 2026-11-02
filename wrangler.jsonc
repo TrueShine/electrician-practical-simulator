@@ -1,0 +1,11 @@
+{
+  // Cloudflare Workers 정적 자산 배포 설정 (J1N.UK 계정)
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "electrician-practical-simulator",
+  "account_id": "f341ffe27ca5d23aad5ed196c5eace42",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
