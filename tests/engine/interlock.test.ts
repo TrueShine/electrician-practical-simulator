@@ -40,7 +40,7 @@ describe('정역 인터록 회로', () => {
 
   it('두 버튼을 동시에 눌러도 한쪽만 동작하고 결과가 항상 같다 (결정성)', () => {
     const netlist = buildNetlist(interlockCircuit());
-    const inputs = { power: true, pressed: new Set(['PB1', 'PB2']), toggled: new Set(['MCCB']) };
+    const inputs = { power: true, pressed: new Set(['PB1', 'PB2']), toggled: new Set(['MCCB']), levels: new Map() };
     const first = solve(netlist, inputs);
     expect(first.oscillation).toBe(false);
     expect(first.coils.size).toBe(1);

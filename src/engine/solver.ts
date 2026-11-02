@@ -9,15 +9,33 @@
  * - 코일 상태 → 접점 갱신 → 재계산을 수렴할 때까지 반복한다.
  *   한 번에 코일 하나씩(기구 정의 순서상 앞의 것부터) 바꾸므로 결과가 결정적이다.
  *   MAX_ITERATIONS 를 넘으면 발진(채터링)으로 판정한다.
+ *
+ * 시간 요소 (now = 가상 시계 ms)
+ * - T: 코일 여자 후 setMs 가 지나면 한시 접점 동작. 순시 접점은 즉시 동작.
+ * - FR: 코일 여자 중 periodMs 마다 접점 반전. 여자 직후에는 a접점이 닫힌 상태로 시작.
+ * - FLS: 전원(코일 단자) 공급 + 수위 조건으로 내부 릴레이 동작.
+ *        고수위 → 동작, 저수위 → 복귀, 중간 수위 → 이전 상태 유지.
+ * - EOCR: 접점은 트립 상태(inputs.toggled)로만 바뀐다. 트립 시 a 닫힘, b 열림.
  */
 import { UnionFind, type Netlist } from './netlist';
-import type { ComponentKind, EngineError, Inputs } from './types';
+import type { ComponentKind, ComponentSpec, EngineError, Inputs } from './types';
 
 export const MAX_ITERATIONS = 50;
+export const DEFAULT_TIMER_MS = 3000;
+export const DEFAULT_FLICKER_MS = 500;
 
-export interface SolveResult {
-  /** 여자된 코일의 기구 ID */
+/** 코일 상태 + 여자 시작 시각 (시간 요소 계산용) */
+export interface DynamicState {
   coils: Set<string>;
+  /** 코일 ID → 여자 시작 시각(ms) */
+  since: Map<string, number>;
+}
+
+export function emptyDynamicState(): DynamicState {
+  return { coils: new Set(), since: new Map() };
+}
+
+export interface SolveResult extends DynamicState {
   /** 표시등·부저 등 출력 부하 동작 여부 (기구 ID → 동작) */
   outputs: Map<string, boolean>;
   /** 단락으로 트립이 일어났는지 */
@@ -27,18 +45,42 @@ export interface SolveResult {
   errors: EngineError[];
 }
 
-function kindMap(netlist: Netlist): Map<string, ComponentKind> {
-  return new Map(netlist.components.map((c) => [c.id, c.kind]));
+function specMap(netlist: Netlist): Map<string, ComponentSpec> {
+  return new Map(netlist.components.map((c) => [c.id, c]));
 }
 
-function isActuated(owner: string, kind: ComponentKind | undefined, coils: ReadonlySet<string>, inputs: Inputs): boolean {
+function contactActuated(
+  owner: string,
+  spec: ComponentSpec | undefined,
+  timed: boolean,
+  dyn: DynamicState,
+  inputs: Inputs,
+  now: number,
+): boolean {
+  const kind: ComponentKind | undefined = spec?.kind;
   switch (kind) {
     case 'MC':
     case 'X':
-      return coils.has(owner);
+    case 'FLS':
+      return dyn.coils.has(owner);
+    case 'T': {
+      if (!dyn.coils.has(owner)) return false;
+      if (!timed) return true;
+      const since = dyn.since.get(owner) ?? now;
+      return now - since >= (spec?.setMs ?? DEFAULT_TIMER_MS);
+    }
+    case 'FR': {
+      if (!dyn.coils.has(owner)) return false;
+      const since = dyn.since.get(owner) ?? now;
+      const period = Math.max(1, spec?.periodMs ?? DEFAULT_FLICKER_MS);
+      return Math.floor((now - since) / period) % 2 === 0;
+    }
+    case 'EOCR':
+      return inputs.toggled.has(owner);
     case 'PB':
       return inputs.pressed.has(owner);
     case 'LS':
+    case 'SS':
     case 'MCCB':
       return inputs.toggled.has(owner);
     case 'F':
@@ -50,20 +92,21 @@ function isActuated(owner: string, kind: ComponentKind | undefined, coils: Reado
 
 interface Evaluation {
   short: boolean;
-  /** 동작하는 부하의 기구 ID */
+  /** 양단에 전압이 걸린 부하의 기구 ID */
   energized: Set<string>;
 }
 
 function evaluate(
   netlist: Netlist,
-  kinds: Map<string, ComponentKind>,
-  coils: ReadonlySet<string>,
+  specs: Map<string, ComponentSpec>,
+  dyn: DynamicState,
   inputs: Inputs,
+  now: number,
   powered: boolean,
 ): Evaluation {
   const uf = new UnionFind(netlist.nodeCount);
   for (const c of netlist.contacts) {
-    const actuated = isActuated(c.owner, kinds.get(c.owner), coils, inputs);
+    const actuated = contactActuated(c.owner, specs.get(c.owner), c.timed, dyn, inputs, now);
     const closed = c.form === 'a' ? actuated : !actuated;
     if (closed) uf.union(c.nodes[0], c.nodes[1]);
   }
@@ -83,28 +126,50 @@ function evaluate(
   return { short: false, energized };
 }
 
-export function solve(netlist: Netlist, inputs: Inputs, prevCoils: ReadonlySet<string> = new Set()): SolveResult {
-  const kinds = kindMap(netlist);
+/** 코일 단자에 전압이 걸린 상태에서 실제로 동작(여자)해야 하는지 */
+function desiredCoil(id: string, spec: ComponentSpec | undefined, supplied: boolean, dyn: DynamicState, inputs: Inputs) {
+  if (!supplied) return false;
+  if (spec?.kind === 'FLS') {
+    const level = inputs.levels.get(id) ?? 'low';
+    if (level === 'high') return true;
+    if (level === 'low') return false;
+    return dyn.coils.has(id); // 중간 수위: 유지
+  }
+  return true;
+}
+
+export function solve(
+  netlist: Netlist,
+  inputs: Inputs,
+  prev: DynamicState = emptyDynamicState(),
+  now = 0,
+): SolveResult {
+  const specs = specMap(netlist);
   const coilOwners = netlist.loads.filter((l) => l.role === 'coil').map((l) => l.owner);
-  const coils = new Set([...prevCoils].filter((c) => coilOwners.includes(c)));
+  const dyn: DynamicState = {
+    coils: new Set([...prev.coils].filter((c) => coilOwners.includes(c))),
+    since: new Map([...prev.since].filter(([c]) => coilOwners.includes(c))),
+  };
   const errors: EngineError[] = [];
 
   let powered = inputs.power;
   let tripped = false;
   let oscillation = false;
   let iterations = 0;
-  let ev = evaluate(netlist, kinds, coils, inputs, powered);
+  let ev = evaluate(netlist, specs, dyn, inputs, now, powered);
 
   while (true) {
     if (ev.short) {
       tripped = true;
       powered = false;
       errors.push({ code: 'short', message: '단락: 부하 없이 L과 N이 연결되어 MCCB가 트립되었습니다.' });
-      ev = evaluate(netlist, kinds, coils, inputs, powered);
+      ev = evaluate(netlist, specs, dyn, inputs, now, powered);
       continue;
     }
 
-    const changed = coilOwners.find((id) => ev.energized.has(id) !== coils.has(id));
+    const changed = coilOwners.find(
+      (id) => desiredCoil(id, specs.get(id), ev.energized.has(id), dyn, inputs) !== dyn.coils.has(id),
+    );
     if (changed === undefined) break;
 
     if (iterations >= MAX_ITERATIONS) {
@@ -116,10 +181,15 @@ export function solve(netlist: Netlist, inputs: Inputs, prevCoils: ReadonlySet<s
       break;
     }
 
-    if (coils.has(changed)) coils.delete(changed);
-    else coils.add(changed);
+    if (dyn.coils.has(changed)) {
+      dyn.coils.delete(changed);
+      dyn.since.delete(changed);
+    } else {
+      dyn.coils.add(changed);
+      dyn.since.set(changed, now);
+    }
     iterations++;
-    ev = evaluate(netlist, kinds, coils, inputs, powered);
+    ev = evaluate(netlist, specs, dyn, inputs, now, powered);
   }
 
   const outputs = new Map<string, boolean>();
@@ -127,5 +197,27 @@ export function solve(netlist: Netlist, inputs: Inputs, prevCoils: ReadonlySet<s
     if (load.role !== 'coil') outputs.set(load.owner, ev.energized.has(load.owner));
   }
 
-  return { coils, outputs, tripped, oscillation, iterations, errors };
+  return { ...dyn, outputs, tripped, oscillation, iterations, errors };
+}
+
+/**
+ * now 이후 처음으로 시간 요소(타이머 만료, 플리커 반전)가 바뀌는 시각.
+ * 없으면 undefined.
+ */
+export function nextEventTime(netlist: Netlist, dyn: DynamicState, now: number): number | undefined {
+  let next: number | undefined;
+  const consider = (t: number) => {
+    if (t > now && (next === undefined || t < next)) next = t;
+  };
+  for (const spec of netlist.components) {
+    if (!dyn.coils.has(spec.id)) continue;
+    const since = dyn.since.get(spec.id) ?? now;
+    if (spec.kind === 'T') {
+      consider(since + (spec.setMs ?? DEFAULT_TIMER_MS));
+    } else if (spec.kind === 'FR') {
+      const period = Math.max(1, spec.periodMs ?? DEFAULT_FLICKER_MS);
+      consider(since + (Math.floor((now - since) / period) + 1) * period);
+    }
+  }
+  return next;
 }

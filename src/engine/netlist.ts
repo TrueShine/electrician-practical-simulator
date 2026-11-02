@@ -52,11 +52,16 @@ export interface NetLoad {
 export interface NetContact {
   owner: string;
   form: ContactElement['form'];
+  timed: boolean;
   nodes: [number, number];
 }
 
 export interface Netlist {
   components: ComponentSpec[];
+  /** 기구 ID → 단자 ID 목록 (등록 순서) */
+  terminalsOf: Map<string, string[]>;
+  /** 모든 단자 ID (전원 L, N 포함) */
+  allTerminals: string[];
   /** 단자 ID → 노드 번호 */
   nodeOf: Map<string, number>;
   nodeCount: number;
@@ -76,6 +81,7 @@ export function buildNetlist(circuit: Circuit, socketPinmaps?: SocketPinmaps): N
   addTerminal(POWER_L);
   addTerminal(POWER_N);
 
+  const terminalsOf = new Map<string, string[]>();
   const loadEls: LoadElement[] = [];
   const contactEls: ContactElement[] = [];
 
@@ -83,6 +89,7 @@ export function buildNetlist(circuit: Circuit, socketPinmaps?: SocketPinmaps): N
     const built = buildComponent(spec, socketPinmaps);
     errors.push(...built.errors);
     for (const term of built.terminals) addTerminal(term);
+    terminalsOf.set(spec.id, built.terminals);
     for (const el of built.elements) {
       if (el.type === 'load') loadEls.push(el);
       else contactEls.push(el);
@@ -118,6 +125,8 @@ export function buildNetlist(circuit: Circuit, socketPinmaps?: SocketPinmaps): N
 
   return {
     components: circuit.components,
+    terminalsOf,
+    allTerminals: [...terminalIndex.keys()],
     nodeOf,
     nodeCount: rootToNode.size,
     lNode: n(POWER_L),
@@ -126,6 +135,7 @@ export function buildNetlist(circuit: Circuit, socketPinmaps?: SocketPinmaps): N
     contacts: contactEls.map((el) => ({
       owner: el.owner,
       form: el.form,
+      timed: el.timed ?? false,
       nodes: [n(el.terminals[0]), n(el.terminals[1])],
     })),
     errors,
