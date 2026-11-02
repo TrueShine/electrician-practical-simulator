@@ -1,0 +1,280 @@
+{
+  "id": "example-motor",
+  "title": "예시 1 · 자기유지 + 타이머 경보",
+  "type": "motor",
+  "official": false,
+  "description": "엔진·화면 검증용 예시 회로입니다 (공개문제 아님). PB1을 누르면 MC1이 자기유지되어 RL이 켜지고, 3초 뒤 T1 한시 a접점으로 부저가 울립니다. PB0으로 정지, EOCR 트립 시 MC1이 꺼지고 YL이 켜집니다. 핀 이름은 실제 소켓 번호가 아닌 논리 이름입니다.",
+  "components": [
+    {
+      "id": "MCCB",
+      "kind": "MCCB"
+    },
+    {
+      "id": "F",
+      "kind": "F"
+    },
+    {
+      "id": "EOCR",
+      "kind": "EOCR"
+    },
+    {
+      "id": "PB0",
+      "kind": "PB",
+      "contact": "b",
+      "label": "정지"
+    },
+    {
+      "id": "PB1",
+      "kind": "PB",
+      "contact": "a",
+      "label": "기동"
+    },
+    {
+      "id": "MC1",
+      "kind": "MC",
+      "aContacts": 2,
+      "bContacts": 1
+    },
+    {
+      "id": "T1",
+      "kind": "T",
+      "setMs": 3000,
+      "timedA": 1,
+      "timedB": 0
+    },
+    {
+      "id": "RL",
+      "kind": "LAMP",
+      "color": "red",
+      "label": "운전"
+    },
+    {
+      "id": "GL",
+      "kind": "LAMP",
+      "color": "green",
+      "label": "정지"
+    },
+    {
+      "id": "YL",
+      "kind": "LAMP",
+      "color": "yellow",
+      "label": "과부하"
+    },
+    {
+      "id": "BZ",
+      "kind": "BZ",
+      "label": "경보"
+    }
+  ],
+  "givenWires": [
+    [
+      "L",
+      "MCCB.1"
+    ],
+    [
+      "N",
+      "MCCB.3"
+    ]
+  ],
+  "answerWires": [
+    [
+      "MCCB.2",
+      "F.1"
+    ],
+    [
+      "F.2",
+      "EOCR.A1"
+    ],
+    [
+      "EOCR.A1",
+      "EOCR.b1-1"
+    ],
+    [
+      "EOCR.b1-1",
+      "EOCR.a1-1"
+    ],
+    [
+      "EOCR.a1-1",
+      "MC1.a2-1"
+    ],
+    [
+      "MC1.a2-1",
+      "MC1.b1-1"
+    ],
+    [
+      "MC1.b1-1",
+      "T1.ta1-1"
+    ],
+    [
+      "EOCR.b1-2",
+      "PB0.1"
+    ],
+    [
+      "PB0.2",
+      "PB1.1"
+    ],
+    [
+      "PB1.1",
+      "MC1.a1-1"
+    ],
+    [
+      "PB1.2",
+      "MC1.a1-2"
+    ],
+    [
+      "MC1.a1-2",
+      "MC1.A1"
+    ],
+    [
+      "MC1.A1",
+      "T1.A1"
+    ],
+    [
+      "MC1.a2-2",
+      "RL.1"
+    ],
+    [
+      "MC1.b1-2",
+      "GL.1"
+    ],
+    [
+      "T1.ta1-2",
+      "BZ.1"
+    ],
+    [
+      "EOCR.a1-2",
+      "YL.1"
+    ],
+    [
+      "MCCB.4",
+      "EOCR.A2"
+    ],
+    [
+      "EOCR.A2",
+      "MC1.A2"
+    ],
+    [
+      "MC1.A2",
+      "T1.A2"
+    ],
+    [
+      "T1.A2",
+      "RL.2"
+    ],
+    [
+      "RL.2",
+      "GL.2"
+    ],
+    [
+      "GL.2",
+      "BZ.2"
+    ],
+    [
+      "BZ.2",
+      "YL.2"
+    ]
+  ],
+  "scenarios": [
+    {
+      "name": "전원 투입",
+      "steps": [
+        {
+          "action": "power_on"
+        },
+        {
+          "expect": {
+            "GL": "on",
+            "RL": "off",
+            "MC1": "off",
+            "BZ": "off",
+            "YL": "off"
+          }
+        }
+      ]
+    },
+    {
+      "name": "기동 (자기유지)",
+      "steps": [
+        {
+          "action": "press",
+          "target": "PB1",
+          "durationMs": 300
+        },
+        {
+          "expect": {
+            "MC1": "on",
+            "RL": "on",
+            "GL": "off",
+            "BZ": "off"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3초 후 부저",
+      "steps": [
+        {
+          "action": "wait",
+          "ms": 3000
+        },
+        {
+          "expect": {
+            "BZ": "on",
+            "MC1": "on"
+          }
+        }
+      ]
+    },
+    {
+      "name": "정지",
+      "steps": [
+        {
+          "action": "press",
+          "target": "PB0",
+          "durationMs": 300
+        },
+        {
+          "expect": {
+            "MC1": "off",
+            "RL": "off",
+            "GL": "on",
+            "BZ": "off"
+          }
+        }
+      ]
+    },
+    {
+      "name": "과부하 트립",
+      "steps": [
+        {
+          "action": "press",
+          "target": "PB1",
+          "durationMs": 300
+        },
+        {
+          "action": "toggle",
+          "target": "EOCR",
+          "value": true
+        },
+        {
+          "expect": {
+            "MC1": "off",
+            "YL": "on",
+            "GL": "on"
+          }
+        },
+        {
+          "action": "toggle",
+          "target": "EOCR",
+          "value": false
+        },
+        {
+          "expect": {
+            "YL": "off",
+            "MC1": "off"
+          }
+        }
+      ]
+    }
+  ]
+}

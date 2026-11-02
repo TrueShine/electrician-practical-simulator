@@ -1,0 +1,29 @@
+{
+  "id": "open-10",
+  "title": "공개문제 10번 (전동기 제어)",
+  "type": "motor",
+  "official": true,
+  "description": "TODO: 공개도면 기준 확인 필요 — 이 파일은 형식 안내용 템플릿이며 실제 정답이 아닙니다.",
+  "components": [
+    { "id": "MCCB", "kind": "MCCB" },
+    { "id": "MC1", "kind": "MC", "socket": "12pin" },
+    { "id": "PB0", "kind": "PB", "contact": "b", "label": "정지" },
+    { "id": "PB1", "kind": "PB", "contact": "a", "label": "기동" },
+    { "id": "RL", "kind": "LAMP", "color": "red" }
+  ],
+  "givenWires": [
+    ["L", "MCCB.1"],
+    ["N", "MCCB.3"]
+  ],
+  "answerWires": [],
+  "scenarios": [
+    {
+      "name": "기동",
+      "steps": [
+        { "action": "power_on" },
+        { "action": "press", "target": "PB1", "durationMs": 300 },
+        { "expect": { "MC1": "on", "RL": "on" } }
+      ]
+    }
+  ]
+}

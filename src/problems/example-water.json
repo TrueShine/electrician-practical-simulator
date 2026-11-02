@@ -1,0 +1,235 @@
+{
+  "id": "example-water",
+  "title": "예시 2 · 플로트레스 급수 (수동/자동)",
+  "type": "water",
+  "official": false,
+  "description": "엔진·화면 검증용 예시 회로입니다 (공개문제 아님). SS 수동 위치에서는 PB1을 누르는 동안만 펌프(MC1)가 돌고, 자동 위치에서는 FLS b(NC)접점으로 저수위에서 급수를 시작해 고수위에서 멈춥니다. 전극 E1~E3은 단자대 TB1로 연결합니다. 핀 이름은 실제 소켓 번호가 아닌 논리 이름입니다.",
+  "components": [
+    {
+      "id": "MCCB",
+      "kind": "MCCB"
+    },
+    {
+      "id": "SS",
+      "kind": "SS",
+      "positionLabels": [
+        "수동",
+        "자동"
+      ]
+    },
+    {
+      "id": "PB1",
+      "kind": "PB",
+      "contact": "a",
+      "label": "수동 운전"
+    },
+    {
+      "id": "FLS",
+      "kind": "FLS"
+    },
+    {
+      "id": "MC1",
+      "kind": "MC",
+      "aContacts": 1,
+      "bContacts": 1,
+      "label": "펌프"
+    },
+    {
+      "id": "RL",
+      "kind": "LAMP",
+      "color": "red",
+      "label": "급수"
+    },
+    {
+      "id": "GL",
+      "kind": "LAMP",
+      "color": "green",
+      "label": "정지"
+    },
+    {
+      "id": "TB1",
+      "kind": "TB",
+      "terminals": 3,
+      "label": "전극"
+    }
+  ],
+  "givenWires": [
+    [
+      "L",
+      "MCCB.1"
+    ],
+    [
+      "N",
+      "MCCB.3"
+    ]
+  ],
+  "answerWires": [
+    [
+      "MCCB.2",
+      "FLS.A1"
+    ],
+    [
+      "FLS.A1",
+      "SS.C"
+    ],
+    [
+      "SS.C",
+      "MC1.a1-1"
+    ],
+    [
+      "MC1.a1-1",
+      "MC1.b1-1"
+    ],
+    [
+      "SS.1",
+      "PB1.1"
+    ],
+    [
+      "PB1.2",
+      "MC1.A1"
+    ],
+    [
+      "SS.2",
+      "FLS.COM"
+    ],
+    [
+      "FLS.NC",
+      "MC1.A1"
+    ],
+    [
+      "MC1.a1-2",
+      "RL.1"
+    ],
+    [
+      "MC1.b1-2",
+      "GL.1"
+    ],
+    [
+      "MCCB.4",
+      "FLS.A2"
+    ],
+    [
+      "FLS.A2",
+      "MC1.A2"
+    ],
+    [
+      "MC1.A2",
+      "RL.2"
+    ],
+    [
+      "RL.2",
+      "GL.2"
+    ],
+    [
+      "FLS.E1",
+      "TB1.1"
+    ],
+    [
+      "FLS.E2",
+      "TB1.2"
+    ],
+    [
+      "FLS.E3",
+      "TB1.3"
+    ]
+  ],
+  "scenarios": [
+    {
+      "name": "수동 운전",
+      "steps": [
+        {
+          "action": "power_on"
+        },
+        {
+          "expect": {
+            "GL": "on",
+            "MC1": "off"
+          }
+        },
+        {
+          "action": "hold",
+          "target": "PB1"
+        },
+        {
+          "expect": {
+            "MC1": "on",
+            "RL": "on",
+            "GL": "off"
+          }
+        },
+        {
+          "action": "release",
+          "target": "PB1"
+        },
+        {
+          "expect": {
+            "MC1": "off",
+            "GL": "on"
+          }
+        }
+      ]
+    },
+    {
+      "name": "자동 급수",
+      "steps": [
+        {
+          "action": "toggle",
+          "target": "SS",
+          "value": true
+        },
+        {
+          "action": "set_level",
+          "target": "FLS",
+          "level": "low"
+        },
+        {
+          "expect": {
+            "MC1": "on",
+            "RL": "on"
+          }
+        },
+        {
+          "action": "set_level",
+          "target": "FLS",
+          "level": "mid"
+        },
+        {
+          "expect": {
+            "MC1": "on"
+          }
+        },
+        {
+          "action": "set_level",
+          "target": "FLS",
+          "level": "high"
+        },
+        {
+          "expect": {
+            "MC1": "off",
+            "GL": "on"
+          }
+        },
+        {
+          "action": "set_level",
+          "target": "FLS",
+          "level": "mid"
+        },
+        {
+          "expect": {
+            "MC1": "off"
+          }
+        },
+        {
+          "action": "set_level",
+          "target": "FLS",
+          "level": "low"
+        },
+        {
+          "expect": {
+            "MC1": "on"
+          }
+        }
+      ]
+    }
+  ]
+}

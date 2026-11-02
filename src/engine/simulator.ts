@@ -5,7 +5,7 @@
  */
 import { VirtualClock } from './clock';
 import { buildNetlist, type Netlist } from './netlist';
-import { emptyDynamicState, nextEventTime, solve, type SolveResult } from './solver';
+import { emptyDynamicState, nextEventTime, nodePotentials, solve, type SolveResult } from './solver';
 import type { Circuit, EngineError, FlsLevel } from './types';
 import type { SocketPinmaps } from '../components/library';
 
@@ -19,7 +19,11 @@ export interface SimulatorState {
   toggled: ReadonlySet<string>;
   levels: ReadonlyMap<string, FlsLevel>;
   coils: ReadonlySet<string>;
+  /** 코일 ID → 여자 시작 시각(ms) */
+  since: ReadonlyMap<string, number>;
   outputs: ReadonlyMap<string, boolean>;
+  /** 노드별 전위 (1 = L, -1 = N, 0 = 없음). netlist.nodeOf 로 단자 → 노드 */
+  potentials: Int8Array;
   /** 마지막 조작에서 발생한 오류 (단락·발진) */
   errors: EngineError[];
   /** 회로 구성 오류 (없는 단자, 핀맵 미확인 등) */
@@ -127,7 +131,9 @@ export class Simulator {
       toggled: new Set(this.toggled),
       levels: new Map(this.levels),
       coils: new Set(this.last.coils),
+      since: new Map(this.last.since),
       outputs: new Map(this.last.outputs),
+      potentials: nodePotentials(this.netlist, this.inputs(), this.last, this.clock.now),
       errors: [...this.errors],
       netlistErrors: [...this.netlist.errors],
     };

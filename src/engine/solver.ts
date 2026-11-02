@@ -96,6 +96,41 @@ interface Evaluation {
   energized: Set<string>;
 }
 
+/** 닫힌 접점으로 노드를 병합한 Union-Find */
+function closedGraph(
+  netlist: Netlist,
+  specs: Map<string, ComponentSpec>,
+  dyn: DynamicState,
+  inputs: Inputs,
+  now: number,
+): UnionFind {
+  const uf = new UnionFind(netlist.nodeCount);
+  for (const c of netlist.contacts) {
+    const actuated = contactActuated(c.owner, specs.get(c.owner), c.timed, dyn, inputs, now);
+    const closed = c.form === 'a' ? actuated : !actuated;
+    if (closed) uf.union(c.nodes[0], c.nodes[1]);
+  }
+  return uf;
+}
+
+/**
+ * 노드별 전위: 1 = L 측, -1 = N 측, 0 = 어느 쪽에도 닿지 않음 (화면 표시용).
+ * 전원이 꺼져 있으면 모두 0.
+ */
+export function nodePotentials(netlist: Netlist, inputs: Inputs, dyn: DynamicState, now: number): Int8Array {
+  const out = new Int8Array(netlist.nodeCount);
+  if (!inputs.power) return out;
+  const uf = closedGraph(netlist, specMap(netlist), dyn, inputs, now);
+  const l = uf.find(netlist.lNode);
+  const n = uf.find(netlist.nNode);
+  if (l === n) return out;
+  for (let i = 0; i < netlist.nodeCount; i++) {
+    const r = uf.find(i);
+    out[i] = r === l ? 1 : r === n ? -1 : 0;
+  }
+  return out;
+}
+
 function evaluate(
   netlist: Netlist,
   specs: Map<string, ComponentSpec>,
@@ -104,12 +139,7 @@ function evaluate(
   now: number,
   powered: boolean,
 ): Evaluation {
-  const uf = new UnionFind(netlist.nodeCount);
-  for (const c of netlist.contacts) {
-    const actuated = contactActuated(c.owner, specs.get(c.owner), c.timed, dyn, inputs, now);
-    const closed = c.form === 'a' ? actuated : !actuated;
-    if (closed) uf.union(c.nodes[0], c.nodes[1]);
-  }
+  const uf = closedGraph(netlist, specs, dyn, inputs, now);
 
   const energized = new Set<string>();
   if (!powered) return { short: false, energized };
